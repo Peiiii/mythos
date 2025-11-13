@@ -3,7 +3,8 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { StoryPanel } from './components/StoryPanel';
 import { SuggestionPanel } from './components/SuggestionPanel';
 import { GuidanceInput } from './components/GuidanceInput';
-import { getStoryContinuations } from './services/geminiService';
+import { ImagePanel } from './components/ImagePanel';
+import { getStoryContinuations, generateImageForParagraph } from './services/geminiService';
 import { AppState } from './types';
 import { FeatherIcon } from './components/icons';
 
@@ -20,6 +21,13 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>(AppState.INITIAL);
   const storyEndRef = useRef<HTMLDivElement>(null);
+
+  // State for visualization
+  const [isVisualizing, setIsVisualizing] = useState<boolean>(false);
+  const [visualizationParagraph, setVisualizationParagraph] = useState<string | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [visualizationError, setVisualizationError] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
 
   const scrollToBottom = () => {
     storyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,6 +71,37 @@ const App: React.FC = () => {
     setError(null);
     setIsLoading(false);
     setAppState(AppState.INITIAL);
+    // Reset visualization state
+    setIsVisualizing(false);
+    setVisualizationParagraph(null);
+    setGeneratedImage(null);
+    setVisualizationError(null);
+    setIsGeneratingImage(false);
+  };
+
+  const handleVisualize = useCallback(async (paragraph: string) => {
+    setIsVisualizing(true);
+    setVisualizationParagraph(paragraph);
+    setIsGeneratingImage(true);
+    setGeneratedImage(null);
+    setVisualizationError(null);
+
+    try {
+        const imageData = await generateImageForParagraph(paragraph);
+        setGeneratedImage(imageData);
+    } catch (err) {
+        console.error(err);
+        setVisualizationError('Failed to evoke the scene. The muses may be busy.');
+    } finally {
+        setIsGeneratingImage(false);
+    }
+  }, []);
+
+  const handleCloseVisualization = () => {
+    setIsVisualizing(false);
+    setVisualizationParagraph(null);
+    setGeneratedImage(null);
+    setVisualizationError(null);
   };
 
   return (
@@ -85,46 +124,58 @@ const App: React.FC = () => {
       </header>
       
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0">
-        <StoryPanel story={story} ref={storyEndRef} />
+        <StoryPanel story={story} ref={storyEndRef} onVisualize={handleVisualize} />
 
         <div className="flex flex-col gap-8 h-full min-h-0">
-          {appState === AppState.INITIAL && (
-            <div className="flex flex-col items-center justify-center h-full bg-gray-800/50 rounded-lg p-8 border border-dashed border-gray-600">
-                <FeatherIcon className="w-16 h-16 text-gray-500 mb-4" />
-                <h2 className="text-2xl font-bold text-white mb-2">Welcome to your novel.</h2>
-                <p className="text-gray-400 text-center max-w-md mb-8">
-                Start by writing an opening line, describing a character, or setting a scene. The AI will provide you with paths to continue.
-                </p>
-                <div className="w-full max-w-xl">
-                    <p className="text-center text-gray-500 mb-3 text-sm font-semibold tracking-wider">OR TRY A STARTING POINT</p>
-                    <div className="flex flex-col gap-3">
-                        {initialPrompts.map((prompt, i) => (
-                            <button
-                                key={i}
-                                onClick={() => handleGenerate(prompt)}
-                                disabled={isLoading}
-                                className="text-left p-3 bg-gray-700/60 rounded-lg hover:bg-gray-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <p className="text-gray-300 font-serif italic">"{prompt}"</p>
-                            </button>
-                        ))}
+          {isVisualizing ? (
+             <ImagePanel
+                paragraph={visualizationParagraph}
+                image={generatedImage}
+                isLoading={isGeneratingImage}
+                error={visualizationError}
+                onClose={handleCloseVisualization}
+              />
+          ) : (
+            <>
+              {appState === AppState.INITIAL && (
+                <div className="flex flex-col items-center justify-center h-full bg-gray-800/50 rounded-lg p-8 border border-dashed border-gray-600">
+                    <FeatherIcon className="w-16 h-16 text-gray-500 mb-4" />
+                    <h2 className="text-2xl font-bold text-white mb-2">Welcome to your novel.</h2>
+                    <p className="text-gray-400 text-center max-w-md mb-8">
+                    Start by writing an opening line, describing a character, or setting a scene. The AI will provide you with paths to continue.
+                    </p>
+                    <div className="w-full max-w-xl">
+                        <p className="text-center text-gray-500 mb-3 text-sm font-semibold tracking-wider">OR TRY A STARTING POINT</p>
+                        <div className="flex flex-col gap-3">
+                            {initialPrompts.map((prompt, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => handleGenerate(prompt)}
+                                    disabled={isLoading}
+                                    className="text-left p-3 bg-gray-700/60 rounded-lg hover:bg-gray-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <p className="text-gray-300 font-serif italic">"{prompt}"</p>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
-            </div>
+              )}
+              
+              <SuggestionPanel 
+                suggestions={suggestions} 
+                isLoading={isLoading} 
+                onSelect={handleSelectSuggestion}
+                hasStory={story.length > 0}
+              />
+              
+              <GuidanceInput onGenerate={handleGenerate} isLoading={isLoading} isInitial={appState === AppState.INITIAL} />
+            </>
           )}
-          
-          <SuggestionPanel 
-            suggestions={suggestions} 
-            isLoading={isLoading} 
-            onSelect={handleSelectSuggestion}
-            hasStory={story.length > 0}
-          />
-          
-          <GuidanceInput onGenerate={handleGenerate} isLoading={isLoading} isInitial={appState === AppState.INITIAL} />
         </div>
       </main>
       
-      {error && (
+      {error && !isVisualizing && (
         <div className="fixed bottom-4 right-4 bg-red-800 text-white p-4 rounded-lg shadow-lg">
           <p><span className="font-bold">Error:</span> {error}</p>
         </div>
