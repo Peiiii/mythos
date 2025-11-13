@@ -24,6 +24,17 @@ const suggestionsSchema = {
     required: ['suggestions']
 };
 
+const imagePromptSchema = {
+    type: Type.OBJECT,
+    properties: {
+        prompt: {
+            type: Type.STRING,
+            description: 'A single, short, evocative sentence for generating an image.'
+        }
+    },
+    required: ['prompt']
+};
+
 export async function getStoryContinuations(storySoFar: string[], userGuidance: string): Promise<string[]> {
     const fullStory = storySoFar.join('\n\n');
 
@@ -72,6 +83,52 @@ You MUST respond with a JSON object that strictly follows the provided schema. D
         throw new Error("Failed to get suggestions from AI.");
     }
 }
+
+export async function generateImagePrompt(storySoFar: string[]): Promise<string> {
+    const fullStory = storySoFar.join('\n\n');
+    const systemInstruction = `You are a creative muse for a fantasy writer. Your task is to inspire them with a visual idea.
+Based on the story so far, create a single, short, and evocative sentence. This sentence will be used as a prompt for an AI image generator to create a piece of atmospheric fantasy art.
+The sentence should be descriptive, imaginative, and fit the tone of the story, but also introduce a new, intriguing element.
+
+Example: "A lone figure stands before a glowing, ancient tree in a bioluminescent forest at twilight."
+
+You MUST respond with a JSON object that strictly follows the provided schema. Do not include any other text or explanations.`;
+
+    const prompt = `
+**Story So Far:**
+${fullStory.length > 0 ? `\`\`\`\n${fullStory}\n\`\`\`` : "The story has not yet begun. Create a prompt for a captivating story opening."}
+
+Generate the image prompt sentence.
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: imagePromptSchema,
+                temperature: 1.0,
+            },
+        });
+
+        const jsonString = response.text.trim();
+        const parsedJson = JSON.parse(jsonString);
+
+        if (parsedJson && typeof parsedJson.prompt === 'string') {
+            return parsedJson.prompt;
+        }
+
+        console.error("Parsed JSON for image prompt does not match expected structure:", parsedJson);
+        throw new Error("Failed to parse image prompt from AI.");
+
+    } catch (error) {
+        console.error("Error calling Gemini API for image prompt:", error);
+        throw new Error("Failed to generate image prompt from AI.");
+    }
+}
+
 
 export async function generateImageForParagraph(paragraph: string): Promise<string> {
     const prompt = `Generate a cinematic, atmospheric, and inspiring illustration for the following story segment.

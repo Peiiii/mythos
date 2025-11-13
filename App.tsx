@@ -4,7 +4,8 @@ import { StoryPanel } from './components/StoryPanel';
 import { SuggestionPanel } from './components/SuggestionPanel';
 import { GuidanceInput } from './components/GuidanceInput';
 import { ImagePanel } from './components/ImagePanel';
-import { getStoryContinuations, generateImageForParagraph } from './services/geminiService';
+import { VisualPromptPanel } from './components/VisualPromptPanel';
+import { getStoryContinuations, generateImageForParagraph, generateImagePrompt } from './services/geminiService';
 import { AppState } from './types';
 import { FeatherIcon } from './components/icons';
 
@@ -28,6 +29,12 @@ const App: React.FC = () => {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [visualizationError, setVisualizationError] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
+
+  // State for visual prompt
+  const [visualPromptImage, setVisualPromptImage] = useState<string | null>(null);
+  const [isVisualPromptLoading, setIsVisualPromptLoading] = useState<boolean>(false);
+  const [visualPromptError, setVisualPromptError] = useState<string | null>(null);
+
 
   const scrollToBottom = () => {
     storyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,6 +84,10 @@ const App: React.FC = () => {
     setGeneratedImage(null);
     setVisualizationError(null);
     setIsGeneratingImage(false);
+    // Reset visual prompt state
+    setVisualPromptImage(null);
+    setIsVisualPromptLoading(false);
+    setVisualPromptError(null);
   };
 
   const handleVisualize = useCallback(async (paragraph: string) => {
@@ -103,6 +114,37 @@ const App: React.FC = () => {
     setGeneratedImage(null);
     setVisualizationError(null);
   };
+
+  const handleStartVisualPrompt = useCallback(async () => {
+    setAppState(AppState.VISUAL_PROMPT);
+    setIsVisualPromptLoading(true);
+    setVisualPromptError(null);
+    setVisualPromptImage(null);
+    setSuggestions([]);
+
+    try {
+      const imagePrompt = await generateImagePrompt(story);
+      const imageData = await generateImageForParagraph(imagePrompt);
+      setVisualPromptImage(imageData);
+    } catch (err) {
+      console.error(err);
+      setVisualPromptError('Failed to summon inspiration. The cosmos is quiet.');
+    } finally {
+      setIsVisualPromptLoading(false);
+    }
+  }, [story]);
+
+  const handleSubmitVisualPrompt = useCallback((guidance: string) => {
+    setAppState(AppState.WRITING);
+    handleGenerate(guidance);
+  }, [handleGenerate]);
+
+  const handleCancelVisualPrompt = useCallback(() => {
+    setAppState(story.length > 0 ? AppState.WRITING : AppState.INITIAL);
+    setVisualPromptImage(null);
+    setIsVisualPromptLoading(false);
+    setVisualPromptError(null);
+  }, [story]);
 
   return (
     <div className="h-screen bg-gray-900 text-gray-200 flex flex-col p-4 sm:p-6 lg:p-8 font-sans">
@@ -135,6 +177,14 @@ const App: React.FC = () => {
                 error={visualizationError}
                 onClose={handleCloseVisualization}
               />
+          ) : appState === AppState.VISUAL_PROMPT ? (
+            <VisualPromptPanel
+              image={visualPromptImage}
+              isLoading={isVisualPromptLoading}
+              error={visualPromptError}
+              onSubmit={handleSubmitVisualPrompt}
+              onCancel={handleCancelVisualPrompt}
+            />
           ) : (
             <>
               {appState === AppState.INITIAL && (
@@ -169,13 +219,13 @@ const App: React.FC = () => {
                 hasStory={story.length > 0}
               />
               
-              <GuidanceInput onGenerate={handleGenerate} isLoading={isLoading} isInitial={appState === AppState.INITIAL} />
+              <GuidanceInput onGenerate={handleGenerate} onVisualPrompt={handleStartVisualPrompt} isLoading={isLoading || isVisualPromptLoading} isInitial={appState === AppState.INITIAL} />
             </>
           )}
         </div>
       </main>
       
-      {error && !isVisualizing && (
+      {error && !isVisualizing && appState !== AppState.VISUAL_PROMPT && (
         <div className="fixed bottom-4 right-4 bg-red-800 text-white p-4 rounded-lg shadow-lg">
           <p><span className="font-bold">Error:</span> {error}</p>
         </div>

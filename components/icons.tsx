@@ -40,3 +40,16 @@ export const ImageIcon: React.FC<{className?: string}> = ({ className }) => (
         <polyline points="21 15 16 10 5 21"></polyline>
     </svg>
 );
+
+export const WandIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M15 4V2"></path>
+        <path d="M15 10V8"></path>
+        <path d="M12.34 7.34 11 6"></path>
+        <path d="M17.66 7.34 19 6"></path>
+        <path d="M15 22v-8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8"></path>
+        <path d="M3 14h12"></path>
+        <path d="m21 12-2 2-2-2"></path>
+        <path d="m17 12 2 2 2-2"></path>
+    </svg>
+);
