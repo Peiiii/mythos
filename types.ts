@@ -11,3 +11,17 @@ export interface StoryBlock {
   image?: string | null;
   imagePrompt?: boolean;
 }
+
+export enum EntityType {
+    CHARACTER = 'Character',
+    LOCATION = 'Location',
+    ITEM = 'Item',
+}
+
+export interface WorldEntity {
+    id: string;
+    name: string;
+    description: string;
+    type: EntityType;
+    image?: string | null;
+}

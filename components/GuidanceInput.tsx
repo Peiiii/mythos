@@ -21,7 +21,7 @@ export const GuidanceInput: React.FC<GuidanceInputProps> = ({ onGenerate, onVisu
   };
 
   return (
-    <div className="mt-auto pt-4">
+    <div className="pt-2">
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"

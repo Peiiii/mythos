@@ -3,7 +3,7 @@ import React from 'react';
 import { LoadingSpinner, FeatherIcon, RefreshIcon } from './icons';
 
 interface ImagePanelProps {
-  paragraph: string | null;
+  text: string | null;
   image: string | null;
   isLoading: boolean;
   error: string | null;
@@ -11,7 +11,7 @@ interface ImagePanelProps {
   onRegenerate: () => void;
 }
 
-export const ImagePanel: React.FC<ImagePanelProps> = ({ paragraph, image, isLoading, error, onClose, onRegenerate }) => {
+export const ImagePanel: React.FC<ImagePanelProps> = ({ text, image, isLoading, error, onClose, onRegenerate }) => {
   return (
     <div className="flex-grow flex flex-col bg-gray-800/50 rounded-lg shadow-inner overflow-hidden">
       <div className="p-4 bg-gray-900/50 flex justify-between items-center flex-shrink-0">
@@ -36,9 +36,9 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ paragraph, image, isLoad
         </div>
       </div>
       <div className="flex-grow p-4 overflow-y-auto custom-scrollbar flex flex-col">
-        {paragraph && (
+        {text && (
           <blockquote className="mb-4 p-4 bg-gray-900/30 border-l-4 border-amber-400 text-gray-300 italic rounded-r-lg">
-            "{paragraph}"
+            "{text}"
           </blockquote>
         )}
 

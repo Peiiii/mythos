@@ -1,5 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { WorldEntity } from '../types';
 
 const API_KEY = process.env.API_KEY;
 
@@ -35,17 +36,39 @@ const imagePromptSchema = {
     required: ['prompt']
 };
 
-export async function getStoryContinuations(storySoFar: string[], userGuidance: string): Promise<string[]> {
+const descriptionSchema = {
+    type: Type.OBJECT,
+    properties: {
+        description: {
+            type: Type.STRING,
+            description: 'A rich, creative, and detailed description for the given entity, suitable for a fantasy novel.'
+        }
+    },
+    required: ['description']
+};
+
+
+export async function getStoryContinuations(storySoFar: string[], userGuidance: string, worldEntities: WorldEntity[]): Promise<string[]> {
     const fullStory = storySoFar.join('\n\n');
+
+    let worldBible = "No world information has been added yet.";
+    if (worldEntities.length > 0) {
+        worldBible = worldEntities.map(entity => 
+            `### ${entity.type}: ${entity.name}\n${entity.description}`
+        ).join('\n\n');
+    }
 
     const prompt = `
 You are a creative council of 100 master novelists, each with a unique style. Your goal is to collaboratively help a user write a novel by providing multiple, diverse paths forward.
 
 **Task:**
-Based on the story so far and the user's latest input, provide 3 distinctly different and compelling options for the next paragraph. The user's input might be a direct instruction (e.g., "Introduce a dragon") or it may be the most recent paragraph of the story, indicating a request to continue from there. These options should explore different plot directions, character moods, or narrative styles. Avoid cliches and be creative.
+Based on the story so far, the established world lore, and the user's latest input, provide 3 distinctly different and compelling options for the next paragraph. The user's input might be a direct instruction (e.g., "Introduce a dragon") or it may be the most recent paragraph of the story, indicating a request to continue from there. These options should explore different plot directions, character moods, or narrative styles. Crucially, you should try to incorporate elements from the "World Bible" where it feels natural, to maintain consistency.
 
 **Language Requirement:**
 Analyze the language of the User's Input. ALL your suggestions MUST be in the same language as that input.
+
+**World Bible (Lore & Established Elements):**
+${worldBible}
 
 **Story So Far:**
 ${fullStory.length > 0 ? `\`\`\`\n${fullStory}\n\`\`\`` : "The story has not yet begun."}
@@ -126,6 +149,42 @@ Generate the image prompt sentence.
     } catch (error) {
         console.error("Error calling Gemini API for image prompt:", error);
         throw new Error("Failed to generate image prompt from AI.");
+    }
+}
+
+export async function generateEntityDescription(entityName: string, entityType: string): Promise<string> {
+    const systemInstruction = `You are a world-building assistant for a fantasy novelist. Your task is to generate a rich, creative description for a character, location, or item. The description should be evocative and provide enough detail to be inspiring, but leave room for the author to expand upon. It should be written in a narrative, descriptive style suitable for a fantasy novel.`;
+    
+    const prompt = `Generate a description for the following entity:
+- **Name:** ${entityName}
+- **Type:** ${entityType}
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: descriptionSchema,
+                temperature: 0.8,
+            },
+        });
+
+        const jsonString = response.text.trim();
+        const parsedJson = JSON.parse(jsonString);
+
+        if (parsedJson && typeof parsedJson.description === 'string') {
+            return parsedJson.description;
+        }
+        
+        console.error("Parsed JSON for entity description does not match expected structure:", parsedJson);
+        throw new Error("Failed to parse entity description from AI.");
+
+    } catch (error) {
+        console.error("Error calling Gemini API for entity description:", error);
+        throw new Error("Failed to generate entity description from AI.");
     }
 }
 
