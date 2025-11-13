@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LoadingSpinner, WandIcon } from './icons';
+import { LoadingSpinner, WandIcon, RefreshIcon } from './icons';
 
 interface VisualPromptPanelProps {
   image: string | null;
@@ -8,9 +8,10 @@ interface VisualPromptPanelProps {
   error: string | null;
   onSubmit: (guidance: string) => void;
   onCancel: () => void;
+  onRegenerate: () => void;
 }
 
-export const VisualPromptPanel: React.FC<VisualPromptPanelProps> = ({ image, isLoading, error, onSubmit, onCancel }) => {
+export const VisualPromptPanel: React.FC<VisualPromptPanelProps> = ({ image, isLoading, error, onSubmit, onCancel, onRegenerate }) => {
   const [guidance, setGuidance] = useState('');
 
   const handleSubmit = () => {
@@ -26,12 +27,24 @@ export const VisualPromptPanel: React.FC<VisualPromptPanelProps> = ({ image, isL
             <WandIcon className="w-6 h-6"/>
             Visual Prompt
         </h2>
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors duration-300"
-        >
-          Cancel
-        </button>
+        <div className="flex items-center gap-2">
+            {image && !isLoading && (
+                 <button
+                    onClick={onRegenerate}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 hover:text-white transition-colors duration-200 disabled:opacity-50"
+                    title="Regenerate visual prompt"
+                >
+                    <RefreshIcon className="w-4 h-4" />
+                </button>
+            )}
+            <button
+            onClick={onCancel}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors duration-300"
+            >
+            Cancel
+            </button>
+        </div>
       </div>
       <div className="flex-grow p-4 overflow-y-auto custom-scrollbar flex flex-col gap-4">
         <div className="flex-grow rounded-lg bg-black/20 flex items-center justify-center relative min-h-[300px]">

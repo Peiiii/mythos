@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LoadingSpinner, FeatherIcon } from './icons';
+import { LoadingSpinner, FeatherIcon, RefreshIcon } from './icons';
 
 interface ImagePanelProps {
   paragraph: string | null;
@@ -8,19 +8,32 @@ interface ImagePanelProps {
   isLoading: boolean;
   error: string | null;
   onClose: () => void;
+  onRegenerate: () => void;
 }
 
-export const ImagePanel: React.FC<ImagePanelProps> = ({ paragraph, image, isLoading, error, onClose }) => {
+export const ImagePanel: React.FC<ImagePanelProps> = ({ paragraph, image, isLoading, error, onClose, onRegenerate }) => {
   return (
     <div className="flex-grow flex flex-col bg-gray-800/50 rounded-lg shadow-inner overflow-hidden">
       <div className="p-4 bg-gray-900/50 flex justify-between items-center flex-shrink-0">
         <h2 className="text-xl font-bold text-amber-300/80">Scene Visualization</h2>
-        <button
-          onClick={onClose}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors duration-300"
-        >
-          Back to Writing
-        </button>
+        <div className="flex items-center gap-2">
+            {image && !isLoading && (
+                 <button
+                    onClick={onRegenerate}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 hover:text-white transition-colors duration-200 disabled:opacity-50"
+                    title="Regenerate image"
+                >
+                    <RefreshIcon className="w-4 h-4" />
+                </button>
+            )}
+            <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors duration-300"
+            >
+            Back to Writing
+            </button>
+        </div>
       </div>
       <div className="flex-grow p-4 overflow-y-auto custom-scrollbar flex flex-col">
         {paragraph && (

@@ -6,7 +6,7 @@ import { GuidanceInput } from './components/GuidanceInput';
 import { ImagePanel } from './components/ImagePanel';
 import { VisualPromptPanel } from './components/VisualPromptPanel';
 import { getStoryContinuations, generateImageForParagraph, generateImagePrompt } from './services/geminiService';
-import { AppState } from './types';
+import { AppState, StoryBlock } from './types';
 import { FeatherIcon } from './components/icons';
 
 const initialPrompts = [
@@ -16,16 +16,17 @@ const initialPrompts = [
 ];
 
 const App: React.FC = () => {
-  const [story, setStory] = useState<string[]>([]);
+  const [story, setStory] = useState<StoryBlock[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>(AppState.INITIAL);
+  const [lastGuidance, setLastGuidance] = useState<string | null>(null);
   const storyEndRef = useRef<HTMLDivElement>(null);
 
-  // State for visualization
+  // State for visualization panel
   const [isVisualizing, setIsVisualizing] = useState<boolean>(false);
-  const [visualizationParagraph, setVisualizationParagraph] = useState<string | null>(null);
+  const [visualizingBlock, setVisualizingBlock] = useState<StoryBlock | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [visualizationError, setVisualizationError] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
@@ -53,8 +54,11 @@ const App: React.FC = () => {
     }
 
     try {
-      const newSuggestions = await getStoryContinuations(story, userGuidance);
+      // Create a plain text version of the story for context
+      const storySoFar = story.map(block => block.text);
+      const newSuggestions = await getStoryContinuations(storySoFar, userGuidance);
       setSuggestions(newSuggestions);
+      setLastGuidance(userGuidance);
     } catch (err) {
       console.error(err);
       setError('Failed to generate suggestions. Please check your API key and try again.');
@@ -62,15 +66,33 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, [story, appState]);
+  
+  const handleRegenerateSuggestions = useCallback(() => {
+    if (lastGuidance && !isLoading) {
+      handleGenerate(lastGuidance);
+    }
+  }, [lastGuidance, isLoading, handleGenerate]);
 
   const handleSelectSuggestion = useCallback((suggestion: string) => {
-    setStory(prevStory => [...prevStory, suggestion]);
+    const newBlock: StoryBlock = {
+      id: `${Date.now()}-${Math.random()}`,
+      text: suggestion,
+      // If a visual prompt image exists, attach it to this new block
+      image: visualPromptImage,
+      imagePrompt: !!visualPromptImage,
+    };
+
+    setStory(prevStory => [...prevStory, newBlock]);
     setSuggestions([]);
     
-    // Automatically generate next suggestions, using the selected suggestion
-    // as the new guidance to maintain language continuity.
+    // Clear the visual prompt image now that it's been used
+    if (visualPromptImage) {
+      setVisualPromptImage(null);
+    }
+    
+    // Automatically generate next suggestions
     handleGenerate(suggestion);
-  }, [handleGenerate]);
+  }, [handleGenerate, visualPromptImage]);
 
   const handleStartOver = () => {
     setStory([]);
@@ -78,9 +100,10 @@ const App: React.FC = () => {
     setError(null);
     setIsLoading(false);
     setAppState(AppState.INITIAL);
+    setLastGuidance(null);
     // Reset visualization state
     setIsVisualizing(false);
-    setVisualizationParagraph(null);
+    setVisualizingBlock(null);
     setGeneratedImage(null);
     setVisualizationError(null);
     setIsGeneratingImage(false);
@@ -90,16 +113,20 @@ const App: React.FC = () => {
     setVisualPromptError(null);
   };
 
-  const handleVisualize = useCallback(async (paragraph: string) => {
+  const handleVisualize = useCallback(async (block: StoryBlock) => {
     setIsVisualizing(true);
-    setVisualizationParagraph(paragraph);
+    setVisualizingBlock(block);
     setIsGeneratingImage(true);
     setGeneratedImage(null);
     setVisualizationError(null);
 
     try {
-        const imageData = await generateImageForParagraph(paragraph);
+        const imageData = await generateImageForParagraph(block.text);
         setGeneratedImage(imageData);
+        // Save the generated image to the story block
+        setStory(prevStory => 
+            prevStory.map(b => b.id === block.id ? { ...b, image: imageData } : b)
+        );
     } catch (err) {
         console.error(err);
         setVisualizationError('Failed to evoke the scene. The muses may be busy.');
@@ -107,10 +134,38 @@ const App: React.FC = () => {
         setIsGeneratingImage(false);
     }
   }, []);
+  
+  const handleRegenerateVisualization = useCallback(async () => {
+    if (!visualizingBlock) return;
+    setIsGeneratingImage(true);
+    setGeneratedImage(null);
+    setVisualizationError(null);
+     try {
+        const imageData = await generateImageForParagraph(visualizingBlock.text);
+        setGeneratedImage(imageData);
+        setStory(prevStory => 
+            prevStory.map(b => b.id === visualizingBlock.id ? { ...b, image: imageData } : b)
+        );
+    } catch (err) {
+        console.error(err);
+        setVisualizationError('Failed to evoke the scene. The muses may be busy.');
+    } finally {
+        setIsGeneratingImage(false);
+    }
+  }, [visualizingBlock]);
+
+  const handleViewVisualization = useCallback((block: StoryBlock) => {
+    setIsVisualizing(true);
+    setVisualizingBlock(block);
+    setGeneratedImage(block.image || null);
+    setVisualizationError(null);
+    setIsGeneratingImage(false);
+  }, []);
+
 
   const handleCloseVisualization = () => {
     setIsVisualizing(false);
-    setVisualizationParagraph(null);
+    setVisualizingBlock(null);
     setGeneratedImage(null);
     setVisualizationError(null);
   };
@@ -123,7 +178,8 @@ const App: React.FC = () => {
     setSuggestions([]);
 
     try {
-      const imagePrompt = await generateImagePrompt(story);
+      const storySoFar = story.map(block => block.text);
+      const imagePrompt = await generateImagePrompt(storySoFar);
       const imageData = await generateImageForParagraph(imagePrompt);
       setVisualPromptImage(imageData);
     } catch (err) {
@@ -166,16 +222,22 @@ const App: React.FC = () => {
       </header>
       
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0">
-        <StoryPanel story={story} ref={storyEndRef} onVisualize={handleVisualize} />
+        <StoryPanel 
+            story={story} 
+            ref={storyEndRef} 
+            onVisualize={handleVisualize}
+            onViewVisualization={handleViewVisualization}
+        />
 
         <div className="flex flex-col gap-8 h-full min-h-0">
           {isVisualizing ? (
              <ImagePanel
-                paragraph={visualizationParagraph}
+                paragraph={visualizingBlock?.text || null}
                 image={generatedImage}
                 isLoading={isGeneratingImage}
                 error={visualizationError}
                 onClose={handleCloseVisualization}
+                onRegenerate={handleRegenerateVisualization}
               />
           ) : appState === AppState.VISUAL_PROMPT ? (
             <VisualPromptPanel
@@ -184,6 +246,7 @@ const App: React.FC = () => {
               error={visualPromptError}
               onSubmit={handleSubmitVisualPrompt}
               onCancel={handleCancelVisualPrompt}
+              onRegenerate={handleStartVisualPrompt}
             />
           ) : (
             <>
@@ -216,6 +279,7 @@ const App: React.FC = () => {
                 suggestions={suggestions} 
                 isLoading={isLoading} 
                 onSelect={handleSelectSuggestion}
+                onRegenerate={handleRegenerateSuggestions}
                 hasStory={story.length > 0}
               />
               
