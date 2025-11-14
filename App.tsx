@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { StoryPanel } from './components/StoryPanel';
 import { SuggestionPanel } from './components/SuggestionPanel';
@@ -7,9 +8,9 @@ import { ImagePanel } from './components/ImagePanel';
 import { VisualPromptPanel } from './components/VisualPromptPanel';
 import { WorldPanel } from './components/WorldPanel';
 import { AddEditEntityModal } from './components/AddEditEntityModal';
-import { getStoryContinuations, generateImageForParagraph, generateImagePrompt, generateSpeechForParagraph } from './services/geminiService';
-import { AppState, StoryBlock, WorldEntity } from './types';
-import { FeatherIcon, BookOpenIcon, UsersIcon } from './components/icons';
+import { getStoryContinuations, generateImageForParagraph, generateImagePrompt, generateSpeechForParagraph, askWorldOracle } from './services/geminiService';
+import { AppState, StoryBlock, WorldEntity, OracleMessage } from './types';
+import { FeatherIcon, BookOpenIcon, UsersIcon, OracleIcon, LoadingSpinner } from './components/icons';
 
 const initialPrompts = [
     "In a city powered by forgotten magic, a young thief discovers a relic that could change everything.",
@@ -31,6 +32,115 @@ const TabButton: React.FC<{ name: string, icon: React.ReactNode, isActive: boole
     </button>
 );
 
+// Oracle Panel Component defined locally to avoid creating a new file
+const OraclePanel: React.FC<{
+    conversation: OracleMessage[];
+    isLoading: boolean;
+    onAsk: (question: string) => void;
+}> = ({ conversation, isLoading, onAsk }) => {
+    const [question, setQuestion] = useState('');
+    const conversationEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [conversation]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (question.trim() && !isLoading) {
+            onAsk(question.trim());
+            setQuestion('');
+        }
+    };
+    
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e as any);
+        }
+    };
+
+    const Message: React.FC<{ message: OracleMessage }> = ({ message }) => {
+        const isUser = message.author === 'user';
+        
+        if (isUser) {
+            return (
+                <div className="flex justify-end">
+                    <div className="bg-amber-600/30 text-gray-200 p-3 rounded-lg max-w-lg">
+                        <p className="whitespace-pre-wrap">{message.text}</p>
+                    </div>
+                </div>
+            );
+        }
+    
+        return (
+            <div className="flex justify-start gap-3">
+                <div className="w-8 h-8 flex-shrink-0 bg-gray-700 rounded-full flex items-center justify-center">
+                    <OracleIcon className="w-5 h-5 text-purple-300" />
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg max-w-lg">
+                    <p className="text-gray-300 whitespace-pre-wrap">{message.text}</p>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex-grow flex flex-col h-full bg-gray-800/60 p-4 rounded-b-lg rounded-tr-lg min-h-0">
+            <div className="flex items-center mb-4 flex-shrink-0">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <OracleIcon className="w-6 h-6 text-purple-300" />
+                    World Oracle
+                </h2>
+            </div>
+            <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                {conversation.length === 0 && (
+                     <div className="flex justify-start gap-3">
+                        <div className="w-8 h-8 flex-shrink-0 bg-gray-700 rounded-full flex items-center justify-center">
+                            <OracleIcon className="w-5 h-5 text-purple-300" />
+                        </div>
+                        <div className="bg-gray-900/50 p-3 rounded-lg max-w-lg">
+                            <p className="text-gray-400 italic">The threads of fate are tangled. Ask, and I shall reveal what is known about your world.</p>
+                        </div>
+                    </div>
+                )}
+                {conversation.map((msg, index) => (
+                    <Message key={index} message={msg} />
+                ))}
+                {isLoading && (
+                    <div className="flex justify-start gap-3">
+                         <div className="w-8 h-8 flex-shrink-0 bg-gray-700 rounded-full flex items-center justify-center">
+                            <OracleIcon className="w-5 h-5 text-purple-300 animate-pulse" />
+                        </div>
+                        <div className="bg-gray-900/50 p-3 rounded-lg max-w-lg flex items-center justify-center">
+                           <LoadingSpinner />
+                        </div>
+                    </div>
+                )}
+                 <div ref={conversationEndRef} />
+            </div>
+            <div className="mt-4 flex-shrink-0">
+                <form onSubmit={handleSubmit}>
+                    <textarea
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Ask about your world..."
+                        className="w-full bg-gray-700 text-gray-200 placeholder-gray-400 px-4 py-3 rounded-lg border-2 border-gray-600 focus:ring-2 focus:ring-purple-400 focus:border-purple-400 focus:outline-none transition-all duration-300 resize-none"
+                        rows={2}
+                        disabled={isLoading}
+                    />
+                     <button type="submit" className="hidden">Submit</button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 const App: React.FC = () => {
   const [story, setStory] = useState<StoryBlock[]>([]);
@@ -43,7 +153,7 @@ const App: React.FC = () => {
 
   // New state for World Building
   const [worldEntities, setWorldEntities] = useState<WorldEntity[]>([]);
-  const [activeTab, setActiveTab] = useState<'writer' | 'world'>('writer');
+  const [activeTab, setActiveTab] = useState<'writer' | 'world' | 'oracle'>('writer');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [entityToEdit, setEntityToEdit] = useState<WorldEntity | null>(null);
 
@@ -63,6 +173,10 @@ const App: React.FC = () => {
   const [narratingBlock, setNarratingBlock] = useState<{ id: string, status: 'loading' | 'playing' | 'error' } | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // V2: Oracle State
+  const [oracleConversation, setOracleConversation] = useState<OracleMessage[]>([]);
+  const [isOracleLoading, setIsOracleLoading] = useState<boolean>(false);
 
   // V2: Audio decoding functions
   function decode(base64: string) {
@@ -176,6 +290,8 @@ const App: React.FC = () => {
     setVisualPromptError(null);
     setWorldEntities([]);
     setActiveTab('writer');
+    setOracleConversation([]);
+    setIsOracleLoading(false);
     stopNarration();
   };
   
@@ -321,6 +437,34 @@ const App: React.FC = () => {
       }
   }, [narratingBlock, stopNarration]);
 
+  // V2: Oracle Handler
+  const handleAskOracle = useCallback(async (question: string) => {
+    setIsOracleLoading(true);
+    const newConversation: OracleMessage[] = [...oracleConversation, { author: 'user', text: question }];
+    setOracleConversation(newConversation);
+    setError(null);
+
+    try {
+        const storySoFar = story.map(block => block.text);
+        const answer = await askWorldOracle(question, storySoFar, worldEntities);
+        setOracleConversation([...newConversation, { author: 'oracle', text: answer }]);
+    } catch(err: any) {
+        console.error(err);
+        const errorMessage = `The Oracle is silent. ${err.message || 'An unknown disturbance occurred.'}`;
+        setOracleConversation([...newConversation, { author: 'oracle', text: errorMessage }]);
+    } finally {
+        setIsOracleLoading(false);
+    }
+  }, [story, worldEntities, oracleConversation]);
+
+  const handleTabChange = (tab: 'writer' | 'world' | 'oracle') => {
+    if (isVisualizing) {
+        handleCloseVisualization();
+    }
+    setActiveTab(tab);
+  };
+
+
   return (
     <>
       <div className="min-h-screen lg:h-screen bg-gray-900 text-gray-200 flex flex-col p-4 sm:p-6 lg:p-8 font-sans lg:overflow-hidden">
@@ -399,33 +543,46 @@ const App: React.FC = () => {
                 
                 {appState !== AppState.INITIAL && (
                     <div className="flex border-b border-gray-700">
-                        <TabButton name="Writer" icon={<BookOpenIcon className="w-5 h-5"/>} isActive={activeTab === 'writer'} onClick={() => setActiveTab('writer')} />
-                        <TabButton name="World" icon={<UsersIcon className="w-5 h-5"/>} isActive={activeTab === 'world'} onClick={() => setActiveTab('world')} />
+                        <TabButton name="Writer" icon={<BookOpenIcon className="w-5 h-5"/>} isActive={activeTab === 'writer'} onClick={() => handleTabChange('writer')} />
+                        <TabButton name="World" icon={<UsersIcon className="w-5 h-5"/>} isActive={activeTab === 'world'} onClick={() => handleTabChange('world')} />
+                        <TabButton name="Oracle" icon={<OracleIcon className="w-5 h-5"/>} isActive={activeTab === 'oracle'} onClick={() => handleTabChange('oracle')} />
                     </div>
                 )}
 
                 <div className="flex-grow flex flex-col min-h-0">
-                    {activeTab === 'writer' && appState !== AppState.INITIAL && (
-                        <SuggestionPanel 
-                            suggestions={suggestions} 
-                            isLoading={isLoading} 
-                            onSelect={handleSelectSuggestion}
-                            onRegenerate={handleRegenerateSuggestions}
-                            hasStory={story.length > 0}
-                        />
-                    )}
-                    {activeTab === 'world' && appState !== AppState.INITIAL && (
-                        <WorldPanel 
-                            entities={worldEntities} 
-                            onAddEntity={() => handleOpenModal()} 
-                            onEditEntity={(entity) => handleOpenModal(entity)}
-                            onVisualize={(entity) => handleVisualize({id: entity.id, text: `${entity.type}: ${entity.name}\n${entity.description}`})}
-                        />
+                    {/* Fix: Refactor conditional rendering to simplify logic and resolve potential TypeScript type inference errors. */}
+                    {appState !== AppState.INITIAL && (
+                        <>
+                            {activeTab === 'writer' && (
+                                <SuggestionPanel 
+                                    suggestions={suggestions} 
+                                    isLoading={isLoading} 
+                                    onSelect={handleSelectSuggestion}
+                                    onRegenerate={handleRegenerateSuggestions}
+                                    hasStory={story.length > 0}
+                                />
+                            )}
+                            {activeTab === 'world' && (
+                                <WorldPanel 
+                                    entities={worldEntities} 
+                                    onAddEntity={() => handleOpenModal()} 
+                                    onEditEntity={(entity) => handleOpenModal(entity)}
+                                    onVisualize={(entity) => handleVisualize({id: entity.id, text: `${entity.type}: ${entity.name}\n${entity.description}`})}
+                                />
+                            )}
+                            {activeTab === 'oracle' && (
+                                <OraclePanel 
+                                  conversation={oracleConversation}
+                                  isLoading={isOracleLoading}
+                                  onAsk={handleAskOracle}
+                                />
+                            )}
+                        </>
                     )}
                 </div>
 
                 {(appState === AppState.INITIAL || (appState !== AppState.INITIAL && activeTab === 'writer')) && (
-                    <GuidanceInput onGenerate={handleGenerate} onVisualPrompt={handleStartVisualPrompt} isLoading={isLoading || isVisualPromptLoading} isInitial={appState === AppState.INITIAL} />
+                    <GuidanceInput onGenerate={handleGenerate} onVisualPrompt={handleStartVisualPrompt} isLoading={isLoading || isVisualPromptLoading || isOracleLoading} isInitial={appState === AppState.INITIAL} />
                 )}
               </>
             )}

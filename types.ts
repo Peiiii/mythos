@@ -25,3 +25,8 @@ export interface WorldEntity {
     type: EntityType;
     image?: string | null;
 }
+
+export interface OracleMessage {
+    author: 'user' | 'oracle';
+    text: string;
+}

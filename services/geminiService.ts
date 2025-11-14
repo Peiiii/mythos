@@ -248,3 +248,59 @@ export async function generateSpeechForParagraph(paragraph: string): Promise<str
         throw new Error("Failed to generate speech from AI.");
     }
 }
+
+export async function askWorldOracle(question: string, storySoFar: string[], worldEntities: WorldEntity[]): Promise<string> {
+    const fullStory = storySoFar.join('\n\n');
+
+    let worldBible = "No world information has been added yet.";
+    if (worldEntities.length > 0) {
+        worldBible = worldEntities.map(entity =>
+            `### ${entity.type}: ${entity.name}\n${entity.description}`
+        ).join('\n\n');
+    }
+
+    const systemInstruction = `You are the World Oracle, an omniscient entity with deep knowledge of the story and world provided. Your purpose is to answer the user's questions about their creation, acting as a "god" of this world they are building.
+
+Your knowledge is based ONLY on the "World Bible" (the lore and entities the user has defined) and the "Story So Far" (the narrative they have written).
+
+**Rules:**
+1.  **Base answers on provided context:** Answer the user's questions using information from the World Bible and Story So Far.
+2.  **Creative Inference:** If the information isn't explicitly available, you are encouraged to creatively and consistently infer details. You should weave your answer into the existing lore as if it were always true. Do not explicitly state that you are inferring.
+3.  **Maintain Persona:** Speak with an air of ancient wisdom and omniscience. Be evocative and literary in your responses.
+4.  **Language Consistency:** Respond in the same language as the user's question.
+
+**Example Answer Style:**
+*User Question:* "What is Elara's greatest fear?"
+*Oracle Response (if not specified):* "Elara, the Shadow Weaver, fears not the darkness she commands, but the blinding, unforgiving light that would reveal the sacrifices she made to gain her power. She fears the memory of the sun on her face, for it reminds her of a life she can never reclaim."
+`;
+
+    const prompt = `
+**World Bible (Lore & Established Elements):**
+${worldBible}
+
+**Story So Far:**
+${fullStory.length > 0 ? `\`\`\`\n${fullStory}\n\`\`\`` : "The story has not yet begun."}
+
+**User's Question:**
+"${question}"
+
+Provide your answer now, Oracle.
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: prompt,
+            config: {
+                systemInstruction,
+                temperature: 0.7,
+            },
+        });
+
+        return response.text.trim();
+
+    } catch (error) {
+        console.error("Error calling Gemini API for Oracle:", error);
+        throw new Error("The Oracle is silent. The cosmos may be out of alignment.");
+    }
+}
