@@ -7,7 +7,7 @@ import { ImagePanel } from './components/ImagePanel';
 import { VisualPromptPanel } from './components/VisualPromptPanel';
 import { WorldPanel } from './components/WorldPanel';
 import { AddEditEntityModal } from './components/AddEditEntityModal';
-import { getStoryContinuations, generateImageForParagraph, generateImagePrompt } from './services/geminiService';
+import { getStoryContinuations, generateImageForParagraph, generateImagePrompt, generateSpeechForParagraph } from './services/geminiService';
 import { AppState, StoryBlock, WorldEntity } from './types';
 import { FeatherIcon, BookOpenIcon, UsersIcon } from './components/icons';
 
@@ -58,6 +58,41 @@ const App: React.FC = () => {
   const [visualPromptImage, setVisualPromptImage] = useState<string | null>(null);
   const [isVisualPromptLoading, setIsVisualPromptLoading] = useState<boolean>(false);
   const [visualPromptError, setVisualPromptError] = useState<string | null>(null);
+
+  // V2: Narration State
+  const [narratingBlock, setNarratingBlock] = useState<{ id: string, status: 'loading' | 'playing' | 'error' } | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // V2: Audio decoding functions
+  function decode(base64: string) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  async function decodeAudioData(
+    data: Uint8Array,
+    ctx: AudioContext,
+    sampleRate: number,
+    numChannels: number,
+  ): Promise<AudioBuffer> {
+    const dataInt16 = new Int16Array(data.buffer);
+    const frameCount = dataInt16.length / numChannels;
+    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+    for (let channel = 0; channel < numChannels; channel++) {
+      const channelData = buffer.getChannelData(channel);
+      for (let i = 0; i < frameCount; i++) {
+        channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+      }
+    }
+    return buffer;
+  }
 
 
   const scrollToBottom = () => {
@@ -115,6 +150,15 @@ const App: React.FC = () => {
     handleGenerate(suggestion);
   }, [handleGenerate, visualPromptImage]);
 
+  const stopNarration = useCallback(() => {
+    if (audioSourceRef.current) {
+        audioSourceRef.current.stop();
+        audioSourceRef.current.disconnect();
+        audioSourceRef.current = null;
+    }
+    setNarratingBlock(null);
+  }, []);
+
   const handleStartOver = () => {
     setStory([]);
     setSuggestions([]);
@@ -132,6 +176,7 @@ const App: React.FC = () => {
     setVisualPromptError(null);
     setWorldEntities([]);
     setActiveTab('writer');
+    stopNarration();
   };
   
   const handleVisualize = useCallback(async (content: { id: string, text: string }) => {
@@ -229,6 +274,53 @@ const App: React.FC = () => {
     });
   };
 
+  // V2: Narration Handler
+  const handleNarrate = useCallback(async (block: StoryBlock) => {
+      if (narratingBlock?.id === block.id && narratingBlock?.status === 'playing') {
+          stopNarration();
+          return;
+      }
+
+      if (narratingBlock) {
+          stopNarration();
+      }
+
+      setNarratingBlock({ id: block.id, status: 'loading' });
+      
+      try {
+          if (!audioContextRef.current) {
+              // Fix: Cast window to any to allow for webkitAudioContext for cross-browser compatibility.
+              audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          }
+          const audioContext = audioContextRef.current;
+          
+          const base64Audio = await generateSpeechForParagraph(block.text);
+          const audioBuffer = await decodeAudioData(decode(base64Audio), audioContext, 24000, 1);
+          
+          const source = audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioContext.destination);
+          
+          source.onended = () => {
+              if (audioSourceRef.current === source) {
+                  setNarratingBlock(null);
+                  audioSourceRef.current = null;
+              }
+          };
+          
+          source.start();
+          audioSourceRef.current = source;
+          setNarratingBlock({ id: block.id, status: 'playing' });
+
+      } catch (err) {
+          console.error("Narration failed", err);
+          setNarratingBlock({ id: block.id, status: 'error' });
+          setTimeout(() => {
+              setNarratingBlock(current => (current?.id === block.id ? null : current));
+          }, 2000);
+      }
+  }, [narratingBlock, stopNarration]);
+
   return (
     <>
       <div className="min-h-screen lg:h-screen bg-gray-900 text-gray-200 flex flex-col p-4 sm:p-6 lg:p-8 font-sans lg:overflow-hidden">
@@ -255,6 +347,8 @@ const App: React.FC = () => {
               ref={storyEndRef} 
               onVisualize={handleVisualize}
               onViewVisualization={handleViewVisualization}
+              onNarrate={handleNarrate}
+              narratingBlock={narratingBlock}
           />
 
           <div className="flex flex-col gap-2 lg:h-full lg:min-h-0">

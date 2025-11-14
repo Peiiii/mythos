@@ -219,3 +219,32 @@ Paragraph: "${paragraph}"
         throw new Error("Failed to generate image from AI.");
     }
 }
+
+export async function generateSpeechForParagraph(paragraph: string): Promise<string> {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: paragraph }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' },
+                    },
+                },
+            },
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+        if (base64Audio) {
+            return base64Audio;
+        }
+        
+        throw new Error("No audio data found in the response.");
+
+    } catch (error) {
+        console.error("Error calling Gemini TTS API:", error);
+        throw new Error("Failed to generate speech from AI.");
+    }
+}
